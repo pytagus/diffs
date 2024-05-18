@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparaison de code</title>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f4f4f4;
+        }
+        #container {
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+        }
+        #code-left, #code-right {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #ccc;
+            overflow: auto;
+            background-color: white;
+        }
+        .diff-removed {
+            background-color: #ffdddd; /* Rouge clair */
+            color: #a94442; /* Rouge foncé */
+        }
+        .diff-added {
+            background-color: #ddffdd; /* Vert clair */
+            color: #3c763d; /* Vert foncé */
+        }
+        #compare-button {
+            margin: 20px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .editable {
+            width: 100%;
+            height: 600px; /* Augmenté à 600px */
+            border: 1px solid #ccc;
+            padding: 10px;
+            box-sizing: border-box;
+            font-family: monospace;
+            white-space: pre;
+            overflow: auto;
+            background-color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="code-left">
+            <h2>Code gauche</h2>
+            <div id="div-left" class="editable" contenteditable="true" placeholder="Collez votre code ici ou glissez un fichier"></div>
+        </div>
+        <div id="code-right">
+            <h2>Code droit</h2>
+            <div id="div-right" class="editable" contenteditable="true" placeholder="Collez votre code ici ou glissez un fichier"></div>
+        </div>
+    </div>
+
+    <button id="compare-button">Comparer les codes</button>
+
+    <script>
+        const divLeft = document.getElementById('div-left');
+        const divRight = document.getElementById('div-right');
+        const compareButton = document.getElementById('compare-button');
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+        function diffWords(line1, line2) {
+            const words1 = line1.split(' ');
+            const words2 = line2.split(' ');
+            let result1 = '';
+            let result2 = '';
+            const len = Math.max(words1.length, words2.length);
+
+            for (let i = 0; i < len; i++) {
+                if (words1[i] !== words2[i]) {
+                    if (words1[i] !== undefined) {
+                        result1 += `<span class="diff-removed">${escapeHtml(words1[i])}</span> `;
+                    }
+                    if (words2[i] !== undefined) {
+                        result2 += `<span class="diff-added">${escapeHtml(words2[i])}</span> `;
+                    }
+                } else {
+                    result1 += `${escapeHtml(words1[i])} `;
+                    result2 += `${escapeHtml(words2[i])} `;
+                }
+            }
+
+            return { result1: result1.trim(), result2: result2.trim() };
+        }
+
+        function lcs(X, Y) {
+            const m = X.length;
+            const n = Y.length;
+            const L = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+            for (let i = 1; i <= m; i++) {
+                for (let j = 1; j <= n; j++) {
+                    if (X[i - 1] === Y[j - 1]) {
+                        L[i][j] = L[i - 1][j - 1] + 1;
+                    } else {
+                        L[i][j] = Math.max(L[i - 1][j], L[i][j - 1]);
+                    }
+                }
+            }
+
+            let index = L[m][n];
+            const lcs = Array(index).fill('');
+
+            let i = m, j = n;
+            while (i > 0 && j > 0) {
+                if (X[i - 1] === Y[j - 1]) {
+                    lcs[index - 1] = X[i - 1];
+                    i--;
+                    j--;
+                    index--;
+                } else if (L[i - 1][j] > L[i][j - 1]) {
+                    i--;
+                } else {
+                    j--;
+                }
+            }
+
+            return lcs;
+        }
+
+        function alignLines(lines1, lines2) {
+            const aligned1 = [];
+            const aligned2 = [];
+            const common = lcs(lines1, lines2);
+            let i1 = 0, i2 = 0, ic = 0;
+
+            while (i1 < lines1.length || i2 < lines2.length) {
+                if (ic < common.length && lines1[i1] === common[ic] && lines2[i2] === common[ic]) {
+                    aligned1.push(lines1[i1]);
+                    aligned2.push(lines2[i2]);
+                    i1++;
+                    i2++;
+                    ic++;
+                } else {
+                    if (i1 < lines1.length && (ic >= common.length || lines1[i1] !== common[ic])) {
+                        aligned1.push(lines1[i1]);
+                        aligned2.push('');
+                        i1++;
+                    }
+                    if (i2 < lines2.length && (ic >= common.length || lines2[i2] !== common[ic])) {
+                        aligned1.push('');
+                        aligned2.push(lines2[i2]);
+                        i2++;
+                    }
+                }
+            }
+
+            return { aligned1, aligned2 };
+        }
+
+        function getDifferences(text1, text2) {
+            const lines1 = text1.split('\n');
+            const lines2 = text2.split('\n');
+            const { aligned1, aligned2 } = alignLines(lines1, lines2);
+            let diffLeft = '';
+            let diffRight = '';
+            let lineNumber = 1;
+
+            for (let i = 0; i < aligned1.length; i++) {
+                const line1 = aligned1[i];
+                const line2 = aligned2[i];
+
+                if (line1 === line2) {
+                    diffLeft += `${lineNumber}: ${escapeHtml(line1)}\n`;
+                    diffRight += `${lineNumber}: ${escapeHtml(line2)}\n`;
+                } else {
+                    const wordDiffs = diffWords(line1, line2);
+                    diffLeft += `${lineNumber}: ${wordDiffs.result1}\n`;
+                    diffRight += `${lineNumber}: ${wordDiffs.result2}\n`;
+                }
+
+                lineNumber++;
+            }
+
+            return { diffLeft, diffRight };
+        }
+
+        function compareCode() {
+            const textLeft = divLeft.innerText;
+            const textRight = divRight.innerText;
+
+            const diffs = getDifferences(textLeft, textRight);
+
+            divLeft.innerHTML = diffs.diffLeft || "Aucune différence trouvée.";
+            divRight.innerHTML = diffs.diffRight || "Aucune différence trouvée.";
+        }
+
+        compareButton.addEventListener('click', compareCode);
+
+        function handleFileSelect(evt, div) {
+            evt.stopPropagation();
+            evt.preventDefault();
+
+            const files = evt.dataTransfer.files;
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                div.innerText = event.target.result;
+            };
+
+            reader.readAsText(files[0]);
+        }
+
+        function handleDragOver(evt) {
+            evt.stopPropagation();
+            evt.preventDefault();
+            evt.dataTransfer.dropEffect = 'copy';
+        }
+
+        divLeft.addEventListener('dragover', handleDragOver, false);
+        divLeft.addEventListener('drop', function(evt) {
+            handleFileSelect(evt, divLeft);
+        }, false);
+
+        divRight.addEventListener('dragover', handleDragOver, false);
+        divRight.addEventListener('drop', function(evt) {
+            handleFileSelect(evt, divRight);
+        }, false);
+
+        function syncScroll(event) {
+            if (event.target === divLeft) {
+                divRight.scrollTop = divLeft.scrollTop;
+                divRight.scrollLeft = divLeft.scrollLeft;
+            } else if (event.target === divRight) {
+                divLeft.scrollTop = divRight.scrollTop;
+                divLeft.scrollLeft = divRight.scrollLeft;
+            }
+        }
+
+        divLeft.addEventListener('scroll', syncScroll);
+        divRight.addEventListener('scroll', syncScroll);
+    </script>
+</body>
+</html>
